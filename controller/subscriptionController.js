@@ -4,10 +4,19 @@ const { User, Subscription, Plan, sequelize } = require('../models');
 const notifCtrl = require('./notificationController');
 const { uploadToS3 } = require('../utils/s3');
 
-const razorpay = new Razorpay({
-    key_id: process.env.RAZORPAY_KEY_ID,
-    key_secret: process.env.RAZORPAY_KEY_SECRET,
-});
+// Razorpay is not currently integrated/used (manual payment proof upload is
+// the active flow below). Only construct the client lazily, on first use,
+// so a missing key doesn't crash the whole app on boot.
+let razorpay = null;
+function getRazorpay() {
+    if (!razorpay) {
+        razorpay = new Razorpay({
+            key_id: process.env.RAZORPAY_KEY_ID,
+            key_secret: process.env.RAZORPAY_KEY_SECRET,
+        });
+    }
+    return razorpay;
+}
 
 exports.createOrder = async (req, res) => {
     try {
@@ -31,7 +40,7 @@ exports.createOrder = async (req, res) => {
             receipt: `receipt_plan_${planId}_user_${req.user.id}_${Date.now()}`,
         };
 
-        const order = await razorpay.orders.create(options);
+        const order = await getRazorpay().orders.create(options);
 
         // Return extra info so frontend can show the right confirmation message
         return res.json({

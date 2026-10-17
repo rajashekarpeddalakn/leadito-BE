@@ -59,8 +59,10 @@ async function startServer() {
       await sequelize.authenticate({ logging: false });
       console.log('✅ Connection to the database has been established successfully.');
 
-      await sequelize.sync({ alter: true, logging: false });
-      console.log('✅ Database synchronized.');
+      if (process.env.DB_SYNC_ON_BOOT === 'true') {
+        await sequelize.sync({ alter: true, logging: false });
+        console.log('✅ Database synchronized.');
+      }
 
       app.listen(PORT, () => {
         console.log(`🚀 Server is running on port ${PORT}`);
@@ -78,6 +80,12 @@ async function startServer() {
   }
 }
 
-startServer();
+// Vercel (and other serverless hosts) import `app` directly as a request
+// handler and manage the listening socket themselves, so only self-start
+// the long-running server/retry-loop/DB-sync when run as a normal process
+// (e.g. `node server.js`, or on a traditional host like Railway/Render).
+if (!process.env.VERCEL) {
+  startServer();
+}
 
 module.exports = app;

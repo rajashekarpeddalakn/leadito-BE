@@ -1,17 +1,10 @@
-const { S3Client, GetObjectCommand } = require('@aws-sdk/client-s3');
-const { Upload } = require('@aws-sdk/lib-storage');
-const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
+// File storage, backed by Vercel Blob (previously AWS S3).
+// Exported function names are kept the same so routes/controllers
+// elsewhere in the app did not need to change.
+const { put, del } = require('@vercel/blob');
 const multer = require('multer');
 const path = require('path');
 require('dotenv').config();
-
-const s3Client = new S3Client({
-    region: process.env.S3_REGION,
-    credentials: {
-        accessKeyId: process.env.S3_ACCESS_KEY,
-        secretAccessKey: process.env.S3_SECRET_KEY,
-    },
-});
 
 const storage = multer.memoryStorage();
 
@@ -33,63 +26,35 @@ const upload = multer({
 const uploadToS3 = async (file, folder = 'logos') => {
     const fileName = `${folder}/${Date.now()}_${path.basename(file.originalname).replace(/\s/g, '_')}`;
 
-    const parallelUploads3 = new Upload({
-        client: s3Client,
-        params: {
-            Bucket: process.env.S3_BUCKET_NAME,
-            Key: fileName,
-            Body: file.buffer,
-            ContentType: file.mimetype,
-        },
+    const blob = await put(fileName, file.buffer, {
+        access: 'public',
+        contentType: file.mimetype,
+        token: process.env.BLOB_READ_WRITE_TOKEN,
     });
 
-    await parallelUploads3.done();
-    return fileName; // Returns shortened key for DB storage
+    return blob.url; // Full public URL, stored directly in the DB
+};
+
+const deleteFromStorage = async (url) => {
+    if (!url) return;
+    try {
+        await del(url, { token: process.env.BLOB_READ_WRITE_TOKEN });
+    } catch (error) {
+        console.error('Error deleting blob:', error);
+    }
 };
 
 const isS3Value = (value) => {
+    // Kept for compatibility with existing call sites: true for anything
+    // that looks like a stored file reference (a Vercel Blob URL).
     if (!value) return false;
-    const clean = value.trim();
-    // Check for known S3 folders or the AWS domain
-    return (
-        clean.startsWith('logos/') ||
-        clean.startsWith('videos/') ||
-        clean.startsWith('testimonials/') ||
-        clean.startsWith('ads/') ||
-        clean.includes('amazonaws.com')
-    );
+    return typeof value === 'string' && value.trim().length > 0;
 };
 
-const extractS3Key = (value) => {
-    if (!value) return null;
-    if (value.includes('amazonaws.com')) {
-        // Extract key from full URL: https://bucket.s3.region.amazonaws.com/key
-        try {
-            const url = new URL(value);
-            return url.pathname.startsWith('/') ? url.pathname.substring(1) : url.pathname;
-        } catch (e) {
-            return null;
-        }
-    }
-    return value;
+const getSignedUrlForView = async (value) => {
+    // Vercel Blob URLs (with `access: 'public'`) are already directly
+    // viewable, so no signing step is needed — just return the stored URL.
+    return value || null;
 };
 
-const getSignedUrlForView = async (s3Value) => {
-    const key = extractS3Key(s3Value);
-    if (!key) return null;
-
-    try {
-        const command = new GetObjectCommand({
-            Bucket: process.env.S3_BUCKET_NAME,
-            Key: key,
-        });
-
-        return await getSignedUrl(s3Client, command, { expiresIn: 86400 }); // 24h
-    } catch (error) {
-        console.error('Error generating signed URL:', error);
-        return null;
-    }
-};
-
-module.exports = { upload, uploadToS3, getSignedUrlForView, isS3Value };
-
+module.exports = { upload, uploadToS3, deleteFromStorage, getSignedUrlForView, isS3Value };
