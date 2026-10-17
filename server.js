@@ -17,6 +17,7 @@ const allowedOrigins = [
   'https://leaditoai.com',
   'https://www.leaditoai.com',
   'https://admin.leaditoai.com',
+  'https://leadito-command-center.vercel.app',
   'http://localhost:3000',
   'http://localhost:5173'
 ];
