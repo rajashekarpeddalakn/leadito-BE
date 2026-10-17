@@ -2,6 +2,8 @@
 
 const fs = require('fs');
 const path = require('path');
+require('pg'); // Sequelize requires these dynamically by name, which Vercel's
+require('pg-hstore'); // bundler can't follow — require them explicitly so they're included.
 const Sequelize = require('sequelize');
 const process = require('process');
 const basename = path.basename(__filename);
